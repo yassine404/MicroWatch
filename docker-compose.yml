@@ -1,0 +1,191 @@
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: userdb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}      
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: userdb
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d userdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-metrics:
+    image: postgres:15-alpine
+    container_name: metricsdb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: metricsdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgmetricsdata:/var/lib/postgresql/data
+
+  
+  postgres-sla:
+    image: postgres:15-alpine
+    container_name: sladb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sladb
+    ports:
+      - "5435:5432"  
+    volumes:
+      - pgsla:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d sladb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    restart: on-failure
+
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:8.17.0
+    container_name: metricbeat
+    user: root
+    volumes:
+      - ./metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/hostfs/proc:ro
+      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
+      - /:/hostfs:ro
+    depends_on:
+      - elasticsearch
+    command: metricbeat -e --strict.perms=false
+    restart: on-failure
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - elasticsearch
+    command: filebeat -e --strict.perms=false
+    restart: on-failure
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "8089:8089"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/userdb
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  metrics-service:
+    build: ./metrics-service
+    container_name: metrics-service
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-metrics:5432/metricsdb
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+    depends_on:
+      - postgres-metrics
+      - elasticsearch
+    restart: on-failure
+
+  sla-service:
+    build: ./sla_service
+    container_name: sla-service
+    ports:
+      - "8098:8098"
+    environment:
+      TZ: Africa/Casablanca
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-sla:5432/sladb
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+    depends_on:
+      postgres-sla:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
+    restart: on-failure
+
+  ia_service:
+    build: ./ia_service
+    container_name: ia-service
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres-sla
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: sladb
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+    depends_on:
+      - postgres-sla
+      - elasticsearch
+    restart: on-failure
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "3000:80"   # Le frontend sera accessible sur le port 8080 de votre machine
+    depends_on:
+      - sla-service
+      - metrics-service
+      - user-service
+      - ia_service
+    restart: on-failure
+
+volumes:
+  pgdata:
+  pgmetricsdata:
+  esdata:
+  pgsla:
