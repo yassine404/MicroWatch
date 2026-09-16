@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Rapport SLA</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .footer { margin-top: 30px; font-size: 0.8em; text-align: center; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Rapport SLA - <span th:text="${serviceName}">Service</span></h1>
+        <p>Période : <span th:text="${from}">du</span> au <span th:text="${to}">au</span></p>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Disponibilité (%)</th>
+                <th>Taux d'erreur (%)</th>
+                <th>Temps de réponse (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="record : ${records}">
+                <td th:text="${record.timestamp}">2026-07-06 10:00</td>
+                <td th:text="${record.availability}">100</td>
+                <td th:text="${record.errorRate}">0</td>
+                <td th:text="${record.avgResponseTimeMs}">0</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="footer">
+        Rapport généré automatiquement par MicroWatch.
+    </div>
+</body>
+</html>

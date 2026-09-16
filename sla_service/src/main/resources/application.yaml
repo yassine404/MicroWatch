@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: sla_service
+  
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/sladb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+jwt:
+  secret: ${JWT_SECRET:vGjKGHwBL/gIYjMfuTWrEx6KDuOWoPLpnVwAKyRfNB0mZXxeJwSeyunhGAUm64tS8UpF3wH7bADviTGAtPti/g==}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+elasticsearch:
+  url: ${ELASTICSEARCH_URL:http://localhost:9200}   
+
+server:
+  port: 8098
+
